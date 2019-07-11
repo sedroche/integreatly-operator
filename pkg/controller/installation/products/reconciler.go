@@ -8,9 +8,10 @@ import (
 	"github.com/integr8ly/integreatly-operator/pkg/controller/installation/products/codeready"
 	"github.com/integr8ly/integreatly-operator/pkg/controller/installation/products/config"
 	"github.com/integr8ly/integreatly-operator/pkg/controller/installation/products/rhsso"
-	"k8s.io/client-go/kubernetes"
+	"github.com/integr8ly/integreatly-operator/pkg/controller/installation/products/threescale"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
 //go:generate moq -out Reconciler_moq.go . Interface
@@ -27,6 +28,8 @@ func NewReconciler(product v1alpha1.ProductName, client client.Client, configMan
 		reconciler, err = rhsso.NewReconciler(configManager, instance, mpm)
 	case v1alpha1.ProductCodeReadyWorkspaces:
 		reconciler, err = codeready.NewReconciler(configManager, instance, mpm)
+	case v1alpha1.Product3Scale:
+		reconciler, err = threescale.NewReconciler(client, rc, configManager, instance, mgr)
 	default:
 		err = errors.New("unknown products: " + string(product))
 		reconciler = &NoOp{}

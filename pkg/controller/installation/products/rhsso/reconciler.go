@@ -3,13 +3,13 @@ package rhsso
 import (
 	"context"
 	"errors"
+	"fmt"
 	aerogearv1 "github.com/integr8ly/integreatly-operator/pkg/apis/aerogear/v1alpha1"
 	"github.com/integr8ly/integreatly-operator/pkg/apis/integreatly/v1alpha1"
 	"github.com/integr8ly/integreatly-operator/pkg/controller/installation/marketplace"
 	"github.com/integr8ly/integreatly-operator/pkg/controller/installation/products/config"
 	coreosv1alpha1 "github.com/operator-framework/operator-lifecycle-manager/pkg/api/apis/operators/v1alpha1"
-
-	"fmt"
+        "sigs.k8s.io/controller-runtime/pkg/manager"
 	pkgerr "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"k8s.io/api/core/v1"
@@ -19,18 +19,21 @@ import (
 )
 
 var (
-	defaultInstallationNamespace = "rhsso"
-	keycloakName                 = "rhsso"
-	keycloakRealmName            = "openshift"
+	DefaultRhssoNamespace = "rhsso"
+	CustomerAdminName     = "customer-admin"
+	keycloakName          = "rhsso"
+	KeycloakRealmName     = "openshift"
+	rhssoId               = "openshift-client"
+	clientSecret          = rhssoId + "-secret"
 )
 
-func NewReconciler(client pkgclient.Client, configManager config.ConfigReadWriter, instance *v1alpha1.Installation) (*Reconciler, error) {
+func NewReconciler(client pkgclient.Client, configManager config.ConfigReadWriter, instance *v1alpha1.Installation, mgr manager.Manager) (*Reconciler, error) {
 	config, err := configManager.ReadRHSSO()
 	if err != nil {
 		return nil, err
 	}
 	if config.GetNamespace() == "" {
-		config.SetNamespace(instance.Spec.NamespacePrefix + defaultInstallationNamespace)
+		config.SetNamespace(instance.Spec.NamespacePrefix + DefaultRhssoNamespace)
 	}
 	return &Reconciler{
 		ConfigManager: configManager,
@@ -145,13 +148,6 @@ func (r *Reconciler) handleCreatingComponents(serverClient pkgclient.Client) (v1
 	logrus.Infof("Creating Keycloak")
 
 	kc := &aerogearv1.Keycloak{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: fmt.Sprintf(
-				"%s/%s",
-				aerogearv1.SchemeGroupVersion.Group,
-				aerogearv1.SchemeGroupVersion.Version),
-			Kind: aerogearv1.KeycloakKind,
-		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      keycloakName,
 			Namespace: r.Config.GetNamespace(),
@@ -173,23 +169,16 @@ func (r *Reconciler) handleCreatingComponents(serverClient pkgclient.Client) (v1
 
 	logrus.Infof("Creating Keycloakrealm")
 	kcr := &aerogearv1.KeycloakRealm{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: fmt.Sprintf(
-				"%s/%s",
-				aerogearv1.SchemeGroupVersion.Group,
-				aerogearv1.SchemeGroupVersion.Version),
-			Kind: aerogearv1.KeycloakRealmKind,
-		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      keycloakRealmName,
+			Name:      KeycloakRealmName,
 			Namespace: r.Config.GetNamespace(),
 		},
 		Spec: aerogearv1.KeycloakRealmSpec{
 			CreateOnly: true,
 			KeycloakApiRealm: &aerogearv1.KeycloakApiRealm{
-				ID:          keycloakRealmName,
-				Realm:       keycloakRealmName,
-				DisplayName: keycloakRealmName,
+				ID:          KeycloakRealmName,
+				Realm:       KeycloakRealmName,
+				DisplayName: KeycloakRealmName,
 				Enabled:     true,
 				EventsListeners: []string{
 					"metrics-listener",
@@ -202,7 +191,6 @@ func (r *Reconciler) handleCreatingComponents(serverClient pkgclient.Client) (v1
 							UserName:      "customer-admin",
 							EmailVerified: true,
 							Email:         "customer-admin@example.com",
-							Password:      "Password1",
 							RealmRoles: []string{
 								"offline_access",
 								"uma_authorization",
@@ -219,7 +207,27 @@ func (r *Reconciler) handleCreatingComponents(serverClient pkgclient.Client) (v1
 								},
 							},
 						},
+						Password:     &password,
 						OutputSecret: "customer-admin-user-credentials",
+					},
+				},
+				Clients: []*aerogearv1.KeycloakClient{
+					{
+						KeycloakApiClient: &aerogearv1.KeycloakApiClient{
+							ID:                      rhssoId,
+							ClientID:                rhssoId,
+							Enabled:                 true,
+							Secret:                  clientSecret,
+							ClientAuthenticatorType: "client-secret",
+							RedirectUris: []string{
+								fmt.Sprintf("https://tutorial-web-app-webapp.%s", r.installation.Spec.RoutingSubdomain),
+								fmt.Sprintf("%v/*", r.installation.Spec.MasterURL),
+								"http://localhost:3006*",
+							},
+							StandardFlowEnabled:       true,
+							DirectAccessGrantsEnabled: true,
+						},
+						OutputSecret: rhssoId + "-client",
 					},
 				},
 			},
@@ -281,7 +289,7 @@ func (r *Reconciler) exportConfig(serverClient pkgclient.Client) error {
 		return pkgerr.Wrap(err, "could not retrieve keycloak admin credential secret for keycloak config")
 	}
 	kcURLBytes := kcAdminCredSecret.Data["SSO_ADMIN_URL"]
-	r.Config.SetRealm(keycloakRealmName)
+	r.Config.SetRealm(KeycloakRealmName)
 	r.Config.SetURL(string(kcURLBytes))
 	err = r.ConfigManager.WriteConfig(r.Config)
 	if err != nil {
