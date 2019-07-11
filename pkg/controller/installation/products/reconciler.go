@@ -9,9 +9,11 @@ import (
 	"github.com/integr8ly/integreatly-operator/pkg/controller/installation/products/codeready"
 	"github.com/integr8ly/integreatly-operator/pkg/controller/installation/products/config"
 	"github.com/integr8ly/integreatly-operator/pkg/controller/installation/products/rhsso"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
+	"github.com/integr8ly/integreatly-operator/pkg/controller/installation/products/threescale"
+	appsv1Client "github.com/openshift/client-go/apps/clientset/versioned/typed/apps/v1"
+	oauthClient "github.com/openshift/client-go/oauth/clientset/versioned/typed/oauth/v1"
 	"github.com/integr8ly/integreatly-operator/pkg/controller/installation/products/amqonline"
 	"github.com/integr8ly/integreatly-operator/pkg/resources"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -36,6 +38,17 @@ func NewReconciler(ctx context.Context, product v1alpha1.ProductName, client cli
 		reconciler, err = fuse.NewReconciler(coreClient, configManager, instance, mpm)
 	case v1alpha1.ProductAMQOnline:
 		reconciler, err = amqonline.NewReconciler(configManager, instance, mpm, nsr)
+	case v1alpha1.Product3Scale:
+		appsv1Client, err := appsv1Client.NewForConfig(rc)
+		if err != nil {
+			return nil, err
+		}
+
+		oauthv1Client, err := oauthClient.NewForConfig(rc)
+		if err != nil {
+			return nil, err
+		}
+		reconciler, err = threescale.NewReconciler(configManager, instance, appsv1Client, oauthv1Client, mpm)
 	default:
 		err = errors.New("unknown products: " + string(product))
 		reconciler = &NoOp{}

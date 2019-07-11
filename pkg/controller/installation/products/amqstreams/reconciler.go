@@ -52,7 +52,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, inst *v1alpha1.Installation,
 	case v1alpha1.PhaseAwaitingNS:
 		return r.handleAwaitingNSPhase(ctx, serverClient)
 	case v1alpha1.PhaseCreatingSubscription:
-		return r.handleCreatingSubscription(ctx)
+		return r.handleCreatingSubscription(ctx, serverClient)
 	case v1alpha1.PhaseCreatingComponents:
 		return r.handleCreatingComponents(ctx, serverClient, inst)
 	case v1alpha1.PhaseAwaitingOperator:
@@ -102,9 +102,10 @@ func (r *Reconciler) handleAwaitingNSPhase(ctx context.Context, serverClient pkg
 	return v1alpha1.PhaseAwaitingNS, nil
 }
 
-func (r *Reconciler) handleCreatingSubscription(ctx context.Context) (v1alpha1.StatusPhase, error) {
+func (r *Reconciler) handleCreatingSubscription(ctx context.Context, serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
 	err := r.mpm.CreateSubscription(
 		ctx,
+                serverClient,
 		marketplace.GetOperatorSources().Integreatly,
 		r.Config.GetNamespace(),
 		"amq-streams",
@@ -198,7 +199,7 @@ func (r *Reconciler) handleCreatingComponents(ctx context.Context, serverClient 
 func (r *Reconciler) handleProgressPhase(ctx context.Context, serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
 	// check AMQ Streams is in ready state
 	pods := &corev1.PodList{}
-	err = serverClient.List(ctx, &pkgclient.ListOptions{Namespace: r.Config.GetNamespace()}, pods)
+	err = serverClient.List(context.TODO(), &pkgclient.ListOptions{Namespace: r.Config.GetNamespace()}, pods)
 	if err != nil {
 		return v1alpha1.PhaseFailed, errors2.Wrap(err, "Failed to check AMQ Streams installation")
 	}
