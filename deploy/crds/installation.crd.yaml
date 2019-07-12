@@ -33,8 +33,10 @@ spec:
             type:
               type: string
               enum:
-              - workshop
-              - managed
+                - workshop
+                - managed
+            selfSignedCerts:
+              type: boolean
             routingSubdomain:
               type: string
             masterUrl:
