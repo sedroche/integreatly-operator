@@ -26,7 +26,7 @@
     "autorest/azure",
     "autorest/date",
     "logger",
-    "tracing",
+    "tracing"
   ]
   pruneopts = "NT"
   revision = "3b1641ed03046f2ee28d73f7a51e5b884d55b92a"
@@ -134,19 +134,6 @@
   pruneopts = "NT"
   revision = "b9bbc5664f49b6deec52393bd68f39830687a347"
   version = "v2.9.3"
-
-[[projects]]
-  digest = "1:c6d6737d5ac21184b021017c166b4b261871f67949614b55969cf02a6048f674"
-  name = "github.com/enmasseproject/enmasse"
-  packages = [
-    "pkg/apis/admin",
-    "pkg/apis/admin/v1beta1",
-    "pkg/apis/enmasse",
-    "pkg/apis/enmasse/v1beta1",
-  ]
-  pruneopts = "NT"
-  revision = "b0892bfeeb23b58320a7b9ad5bd147824ba02810"
-  version = "0.28.2"
 
 [[projects]]
   digest = "1:448bf60e9dce6d5fd9dfa8fd9eb9a23163424ff4e4f142456405781e942e3998"
@@ -585,14 +572,6 @@
   pruneopts = "NT"
   revision = "298182f68c66c05229eb03ac171abe6e309ee79a"
   version = "v1.0.3"
-
-[[projects]]
-  digest = "1:91fca15e461a8617f73c8d17c825008cfbe713438289d4d97eb354c521e6fa47"
-  name = "github.com/syndesisio/syndesis"
-  packages = ["install/operator/pkg/apis/syndesis/v1alpha1"]
-  pruneopts = "NT"
-  revision = "ee2758ada1883c9d61dbf9b99b2ff391b7578b7b"
-  version = "1.7.9"
 
 [[projects]]
   digest = "1:58353509d5aa095935972b5896694f823a0c76d1b9eec3a1b88c69b90c94b519"
@@ -1211,8 +1190,6 @@
   analyzer-version = 1
   input-imports = [
     "github.com/eclipse/che-operator/pkg/apis/org/v1",
-    "github.com/enmasseproject/enmasse/pkg/apis/admin/v1beta1",
-    "github.com/enmasseproject/enmasse/pkg/apis/enmasse/v1beta1",
     "github.com/go-openapi/spec",
     "github.com/matryer/moq",
     "github.com/operator-framework/operator-lifecycle-manager/pkg/api/apis/operators/v1",
@@ -1226,7 +1203,6 @@
     "github.com/pkg/errors",
     "github.com/sirupsen/logrus",
     "github.com/spf13/pflag",
-    "github.com/syndesisio/syndesis/install/operator/pkg/apis/syndesis/v1alpha1",
     "gopkg.in/yaml.v2",
     "k8s.io/api/core/v1",
     "k8s.io/apimachinery/pkg/api/errors",
