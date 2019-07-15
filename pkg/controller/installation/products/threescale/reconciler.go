@@ -16,7 +16,9 @@ import (
 
 	aerogearv1 "github.com/integr8ly/integreatly-operator/pkg/apis/aerogear/v1alpha1"
 	appsv1 "github.com/openshift/api/apps/v1"
+	oauthv1 "github.com/openshift/api/oauth/v1"
 	appsv1Client "github.com/openshift/client-go/apps/clientset/versioned/typed/apps/v1"
+	oauthClient "github.com/openshift/client-go/oauth/clientset/versioned/typed/oauth/v1"
 	"github.com/sirupsen/logrus"
 	"k8s.io/api/core/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -30,6 +32,7 @@ var (
 	packageName                  = "3scale"
 	apiManagerName               = "3scale"
 	clientId                     = "3scale"
+	oauthId                      = "3scale"
 	clientSecret                 = clientId + "-client-secret"
 )
 
@@ -45,6 +48,11 @@ func NewReconciler(client pkgclient.Client, rc *rest.Config, configManager confi
 		return nil, err
 	}
 
+	oauthv1Client, err := oauthClient.NewForConfig(rc)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Reconciler{
 		client:        client,
 		restConfig:    rc,
@@ -55,6 +63,7 @@ func NewReconciler(client pkgclient.Client, rc *rest.Config, configManager confi
 		installation:  i,
 		tsClient:      tsClient,
 		appsv1Client:  appsv1Client,
+		oauthv1Client: oauthv1Client,
 	}, nil
 }
 
@@ -68,6 +77,7 @@ type Reconciler struct {
 	installation  *v1alpha1.Installation
 	tsClient      *threeScaleClient
 	appsv1Client  *appsv1Client.AppsV1Client
+	oauthv1Client *oauthClient.OauthV1Client
 }
 
 func (r *Reconciler) Reconcile(in *v1alpha1.Installation) (v1alpha1.StatusPhase, error) {
@@ -96,6 +106,11 @@ func (r *Reconciler) Reconcile(in *v1alpha1.Installation) (v1alpha1.StatusPhase,
 	}
 
 	phase, err = r.reconcileUpdatingAdminDetails()
+	if err != nil || phase != v1alpha1.PhaseCompleted {
+		return phase, err
+	}
+
+	phase, err = r.reconcileServiceDiscovery()
 	if err != nil || phase != v1alpha1.PhaseCompleted {
 		return phase, err
 	}
@@ -461,10 +476,68 @@ func (r *Reconciler) reconcileUpdatingAdminDetails() (v1alpha1.StatusPhase, erro
 				return v1alpha1.PhaseFailed, err
 			}
 
-			err = r.RolloutSystemApp()
+			err = r.RolloutDeployment("system-app")
 			if err != nil {
 				return v1alpha1.PhaseFailed, err
 			}
+		}
+	}
+
+	return v1alpha1.PhaseCompleted, nil
+}
+
+func (r *Reconciler) reconcileServiceDiscovery() (v1alpha1.StatusPhase, error) {
+	_, err := r.oauthv1Client.OAuthClients().Get(oauthId, metav1.GetOptions{})
+	if err != nil && k8serr.IsNotFound(err) {
+		tsOauth := &oauthv1.OAuthClient{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: oauthId,
+			},
+			Secret: clientSecret,
+			RedirectURIs: []string{
+				r.installation.Spec.MasterURL,
+			},
+			GrantMethod: oauthv1.GrantHandlerPrompt,
+		}
+		if err := controllerutil.SetControllerReference(r.installation, tsOauth, r.mgr.GetScheme()); err != nil {
+			return v1alpha1.PhaseFailed, err
+		}
+		_, err = r.oauthv1Client.OAuthClients().Create(tsOauth)
+		if err != nil {
+			return v1alpha1.PhaseFailed, err
+		}
+	}
+
+	system := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "system",
+			Namespace: r.namespace,
+		},
+	}
+	serverClient, err := pkgclient.New(r.restConfig, pkgclient.Options{})
+	if err != nil {
+		return v1alpha1.PhaseFailed, err
+	}
+	err = serverClient.Get(context.TODO(), pkgclient.ObjectKey{Name: system.Name, Namespace: system.Namespace}, system)
+	if err != nil {
+		return v1alpha1.PhaseFailed, err
+	}
+	sdConfig := fmt.Sprintf("production:\n  enabled: true\n  server_scheme: 'https'\n  server_host: 'kubernetes.default.svc.cluster.local'\n  server_port: 443\n  authentication_method: oauth\n  oauth_server_type: builtin\n  client_id: '%s'\n  client_secret: '%s'\n  timeout: 1\n  open_timeout: 1\n  max_retry: 5\n", oauthId, clientSecret)
+	if system.Data["service_discovery.yml"] != sdConfig {
+		system.Data["service_discovery.yml"] = sdConfig
+		r.client.Update(context.TODO(), system)
+		if err != nil {
+			return v1alpha1.PhaseFailed, err
+		}
+
+		err = r.RolloutDeployment("system-app")
+		if err != nil {
+			return v1alpha1.PhaseFailed, err
+		}
+
+		err = r.RolloutDeployment("system-sidekiq")
+		if err != nil {
+			return v1alpha1.PhaseFailed, err
 		}
 	}
 
@@ -543,9 +616,9 @@ func (r *Reconciler) GetAdminToken() (*string, error) {
 	return &accessToken, nil
 }
 
-func (r *Reconciler) RolloutSystemApp() error {
-	_, err := r.appsv1Client.DeploymentConfigs(r.namespace).Instantiate("system-app", &appsv1.DeploymentRequest{
-		Name:   "system-app",
+func (r *Reconciler) RolloutDeployment(name string) error {
+	_, err := r.appsv1Client.DeploymentConfigs(r.namespace).Instantiate(name, &appsv1.DeploymentRequest{
+		Name:   name,
 		Force:  true,
 		Latest: true,
 	})
