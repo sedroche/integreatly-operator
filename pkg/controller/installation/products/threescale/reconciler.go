@@ -37,7 +37,7 @@ var (
 )
 
 func NewReconciler(client pkgclient.Client, rc *rest.Config, configManager config.ConfigReadWriter, i *v1alpha1.Installation, mgr manager.Manager) (*Reconciler, error) {
-	mpm := marketplace.NewManager(client, mgr, rc)
+	mpm := marketplace.NewManager(client, rc)
 	ns := i.Spec.NamespacePrefix + defaultInstallationNamespace
 
 	httpc := &http.Client{}

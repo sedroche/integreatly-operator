@@ -168,6 +168,7 @@ func (r *Reconciler) handleCreatingComponents(serverClient pkgclient.Client) (v1
 	}
 
 	logrus.Infof("Creating Keycloakrealm")
+	password := "Password1"
 	kcr := &aerogearv1.KeycloakRealm{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      KeycloakRealmName,

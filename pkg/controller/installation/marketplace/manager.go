@@ -11,8 +11,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 	pkgclient "sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
 const (
@@ -49,14 +47,12 @@ type MarketplaceInterface interface {
 type MarketplaceManager struct {
 	client     pkgclient.Client
 	restConfig *rest.Config
-	mgr        manager.Manager
 }
 
-func NewManager(client pkgclient.Client, mgr manager.Manager, rc *rest.Config) *MarketplaceManager {
+func NewManager(client pkgclient.Client, rc *rest.Config) *MarketplaceManager {
 	return &MarketplaceManager{
 		client:     client,
 		restConfig: rc,
-		mgr:        mgr,
 	}
 }
 
@@ -95,9 +91,6 @@ func (m *MarketplaceManager) CreateSubscription(i *v1alpha1.Installation, os mar
 			TargetNamespace: ns,
 		},
 	}
-	if err := controllerutil.SetControllerReference(i, csc, m.mgr.GetScheme()); err != nil {
-		return err
-	}
 	err = m.client.Create(context.TODO(), csc)
 	if err != nil && !k8serr.IsAlreadyExists(err) {
 		logrus.Infof("error creating catalog source config: %s", err.Error())
@@ -113,9 +106,6 @@ func (m *MarketplaceManager) CreateSubscription(i *v1alpha1.Installation, os mar
 			TargetNamespaces: operatorGroupNamespaces,
 		},
 	}
-	if err := controllerutil.SetControllerReference(i, og, m.mgr.GetScheme()); err != nil {
-		return err
-	}
 	err = m.client.Create(context.TODO(), og)
 	if err != nil {
 		logrus.Infof("error creating operator group")
@@ -128,9 +118,6 @@ func (m *MarketplaceManager) CreateSubscription(i *v1alpha1.Installation, os mar
 		Package:                pkg,
 		CatalogSource:          csc.Name,
 		CatalogSourceNamespace: ns,
-	}
-	if err := controllerutil.SetControllerReference(i, sub, m.mgr.GetScheme()); err != nil {
-		return err
 	}
 	err = m.client.Create(context.TODO(), sub)
 	if err != nil {
