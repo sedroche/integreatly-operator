@@ -67,7 +67,7 @@ func (r *Reconciler) Reconcile(in *v1alpha1.Installation, serverClient pkgclient
 		return phase, err
 	}
 
-	phase, err = r.reconcileOperator()
+	phase, err = r.reconcileOperator(serverClient)
 	if err != nil || phase != v1alpha1.PhaseCompleted {
 		return phase, err
 	}
@@ -128,8 +128,9 @@ func (r *Reconciler) reconcileNamespace(serverClient pkgclient.Client) (v1alpha1
 	return v1alpha1.PhaseInProgress, nil
 }
 
-func (r *Reconciler) reconcileOperator() (v1alpha1.StatusPhase, error) {
+func (r *Reconciler) reconcileOperator(serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
 	err := r.mpm.CreateSubscription(
+		serverClient,
 		marketplace.GetOperatorSources().Integreatly,
 		r.namespace,
 		packageName,

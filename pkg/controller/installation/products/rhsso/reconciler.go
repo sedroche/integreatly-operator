@@ -57,7 +57,7 @@ func (r *Reconciler) Reconcile(inst *v1alpha1.Installation, serverClient pkgclie
 	case v1alpha1.PhaseAwaitingNS:
 		return r.handleAwaitingNSPhase(serverClient)
 	case v1alpha1.PhaseCreatingSubscription:
-		return r.handleCreatingSubscription()
+		return r.handleCreatingSubscription(serverClient)
 	case v1alpha1.PhaseAwaitingOperator:
 		return r.handleAwaitingOperator()
 	case v1alpha1.PhaseCreatingComponents:
@@ -106,8 +106,9 @@ func (r *Reconciler) handleAwaitingNSPhase(serverClient pkgclient.Client) (v1alp
 	return v1alpha1.PhaseAwaitingNS, nil
 }
 
-func (r *Reconciler) handleCreatingSubscription() (v1alpha1.StatusPhase, error) {
+func (r *Reconciler) handleCreatingSubscription(serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
 	err := r.mpm.CreateSubscription(
+		serverClient,
 		marketplace.GetOperatorSources().Integreatly,
 		r.Config.GetNamespace(),
 		"rhsso",
