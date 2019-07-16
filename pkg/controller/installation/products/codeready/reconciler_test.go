@@ -10,6 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"testing"
 
 	aerogearv1 "github.com/integr8ly/integreatly-operator/pkg/apis/aerogear/v1alpha1"
@@ -57,7 +58,7 @@ func TestCodeready(t *testing.T) {
 		ExpectedCreateError  string
 		Object               *v1alpha1.Installation
 		FakeConfig           *config.ConfigReadWriterMock
-		FakeK8sClient        *k8sclient.Clientset
+		FakeManager          manager.Manager
 		FakeControllerClient client.Client
 		FakeMPM              *marketplace.MarketplaceInterfaceMock
 		ValidateCallCounts   func(mockConfig *config.ConfigReadWriterMock, mockMPM *marketplace.MarketplaceInterfaceMock, t *testing.T)
