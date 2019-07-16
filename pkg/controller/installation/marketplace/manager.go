@@ -2,7 +2,6 @@ package marketplace
 
 import (
 	"context"
-	"github.com/integr8ly/integreatly-operator/pkg/apis/integreatly/v1alpha1"
 	coreosv1 "github.com/operator-framework/operator-lifecycle-manager/pkg/api/apis/operators/v1"
 	coreosv1alpha1 "github.com/operator-framework/operator-lifecycle-manager/pkg/api/apis/operators/v1alpha1"
 	marketplacev1 "github.com/operator-framework/operator-marketplace/pkg/apis/operators/v1"
@@ -40,7 +39,7 @@ func GetOperatorSources() *operatorSources {
 
 //go:generate moq -out MarketplaceManager_moq.go . MarketplaceInterface
 type MarketplaceInterface interface {
-	CreateSubscription(i *v1alpha1.Installation, os marketplacev1.OperatorSource, ns string, pkg string, channel string, operatorGroupNamespaces []string, approvalStrategy coreosv1alpha1.Approval) error
+	CreateSubscription(os marketplacev1.OperatorSource, ns string, pkg string, channel string, operatorGroupNamespaces []string, approvalStrategy coreosv1alpha1.Approval) error
 	GetSubscriptionInstallPlan(subName, ns string) (*coreosv1alpha1.InstallPlan, error)
 }
 
@@ -56,7 +55,7 @@ func NewManager(client pkgclient.Client, rc *rest.Config) *MarketplaceManager {
 	}
 }
 
-func (m *MarketplaceManager) CreateSubscription(i *v1alpha1.Installation, os marketplacev1.OperatorSource, ns string, pkg string, channel string, operatorGroupNamespaces []string, approvalStrategy coreosv1alpha1.Approval) error {
+func (m *MarketplaceManager) CreateSubscription(os marketplacev1.OperatorSource, ns string, pkg string, channel string, operatorGroupNamespaces []string, approvalStrategy coreosv1alpha1.Approval) error {
 	logrus.Infof("creating subscription in ns: %s", ns)
 	sub := &coreosv1alpha1.Subscription{
 		ObjectMeta: metav1.ObjectMeta{

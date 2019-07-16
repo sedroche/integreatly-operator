@@ -39,7 +39,8 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileInstallation{client: mgr.GetClient(), scheme: mgr.GetScheme()}
+	restConfig := controllerruntime.GetConfigOrDie()
+	return &ReconcileInstallation{client: mgr.GetClient(), scheme: mgr.GetScheme(), restConfig: restConfig}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -76,6 +77,7 @@ type ReconcileInstallation struct {
 	// that reads objects from the cache and writes to the apiserver
 	client     client.Client
 	scheme     *runtime.Scheme
+	restConfig *rest.Config
 }
 
 // Reconcile reads that state of the cluster for a Installation object and makes changes based on the state read

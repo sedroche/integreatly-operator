@@ -9,7 +9,6 @@ import (
 	"github.com/integr8ly/integreatly-operator/pkg/controller/installation/marketplace"
 	"github.com/integr8ly/integreatly-operator/pkg/controller/installation/products/config"
 	coreosv1alpha1 "github.com/operator-framework/operator-lifecycle-manager/pkg/api/apis/operators/v1alpha1"
-        "sigs.k8s.io/controller-runtime/pkg/manager"
 	pkgerr "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"k8s.io/api/core/v1"
@@ -27,7 +26,7 @@ var (
 	clientSecret          = rhssoId + "-secret"
 )
 
-func NewReconciler(client pkgclient.Client, configManager config.ConfigReadWriter, instance *v1alpha1.Installation, mgr manager.Manager) (*Reconciler, error) {
+func NewReconciler(configManager config.ConfigReadWriter, instance *v1alpha1.Installation, mpm marketplace.MarketplaceInterface) (*Reconciler, error) {
 	config, err := configManager.ReadRHSSO()
 	if err != nil {
 		return nil, err
@@ -39,6 +38,7 @@ func NewReconciler(client pkgclient.Client, configManager config.ConfigReadWrite
 		ConfigManager: configManager,
 		Config:        config,
 		mpm:           mpm,
+		installation:  instance,
 	}, nil
 }
 
@@ -46,6 +46,7 @@ type Reconciler struct {
 	Config        *config.RHSSO
 	ConfigManager config.ConfigReadWriter
 	mpm           marketplace.MarketplaceInterface
+	installation  *v1alpha1.Installation
 }
 
 func (r *Reconciler) Reconcile(inst *v1alpha1.Installation, serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
@@ -54,7 +55,7 @@ func (r *Reconciler) Reconcile(inst *v1alpha1.Installation, serverClient pkgclie
 	case v1alpha1.PhaseNone:
 		return r.handleNoPhase(serverClient)
 	case v1alpha1.PhaseAwaitingNS:
-		return r.handleAwaitingNSPhase()
+		return r.handleAwaitingNSPhase(serverClient)
 	case v1alpha1.PhaseCreatingSubscription:
 		return r.handleCreatingSubscription()
 	case v1alpha1.PhaseAwaitingOperator:
@@ -87,7 +88,7 @@ func (r *Reconciler) handleNoPhase(serverClient pkgclient.Client) (v1alpha1.Stat
 	return v1alpha1.PhaseAwaitingNS, nil
 }
 
-func (r *Reconciler) handleAwaitingNSPhase() (v1alpha1.StatusPhase, error) {
+func (r *Reconciler) handleAwaitingNSPhase(serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
 	ns := &v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: r.Config.GetNamespace(),
@@ -246,7 +247,7 @@ func (r *Reconciler) handleProgressPhase(serverClient pkgclient.Client) (v1alpha
 	logrus.Infof("checking ready status for rhsso")
 	kcr := &aerogearv1.KeycloakRealm{}
 
-	err := serverClient.Get(context.TODO(), pkgclient.ObjectKey{Name: keycloakRealmName, Namespace: r.Config.GetNamespace()}, kcr)
+	err := serverClient.Get(context.TODO(), pkgclient.ObjectKey{Name: KeycloakRealmName, Namespace: r.Config.GetNamespace()}, kcr)
 	if err != nil {
 		return v1alpha1.PhaseFailed, err
 	}

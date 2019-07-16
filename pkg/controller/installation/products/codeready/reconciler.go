@@ -26,7 +26,7 @@ const (
 	defaultSubscriptionName      = "codeready-workspaces"
 )
 
-func NewReconciler(configManager config.ConfigReadWriter, instance *v1alpha1.Installation, logger *logrus.Entry) (*Reconciler, error) {
+func NewReconciler(configManager config.ConfigReadWriter, instance *v1alpha1.Installation, mpm marketplace.MarketplaceInterface) (*Reconciler, error) {
 	config, err := configManager.ReadCodeReady()
 	if err != nil {
 		return nil, pkgerr.Wrap(err, "could not retrieve che config")
@@ -240,7 +240,7 @@ func (r *Reconciler) reconcileKeycloakClient(ctx context.Context, serverClient p
 			Namespace: r.Config.GetNamespace(),
 		},
 	}
-	err = serverClient.Get(ctx, pkgclient.ObjectKey{Name: defaultCheClusterName, Namespace: r.Config.GetNamespace()}, cheCluster)
+	err := serverClient.Get(ctx, pkgclient.ObjectKey{Name: defaultCheClusterName, Namespace: r.Config.GetNamespace()}, cheCluster)
 	if err != nil {
 		return v1alpha1.PhaseFailed, pkgerr.Wrap(err, "could not retrieve checluster for keycloak client update")
 	}
