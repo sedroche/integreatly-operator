@@ -32,7 +32,7 @@ var (
 	clientSecret                 = clientId + "-client-secret"
 )
 
-func NewReconciler(configManager config.ConfigReadWriter, i *v1alpha1.Installation, appsv1Client *appsv1Client.AppsV1Client, oauthv1Client *oauthClient.OauthV1Client, mpm marketplace.MarketplaceInterface) (*Reconciler, error) {
+func NewReconciler(configManager config.ConfigReadWriter, i *v1alpha1.Installation, appsv1Client appsv1Client.AppsV1Interface, oauthv1Client oauthClient.OauthV1Interface, mpm marketplace.MarketplaceInterface) (*Reconciler, error) {
 	ns := i.Spec.NamespacePrefix + defaultInstallationNamespace
 
 	httpc := &http.Client{}
@@ -55,8 +55,8 @@ type Reconciler struct {
 	mpm           marketplace.MarketplaceInterface
 	installation  *v1alpha1.Installation
 	tsClient      *threeScaleClient
-	appsv1Client  *appsv1Client.AppsV1Client
-	oauthv1Client *oauthClient.OauthV1Client
+	appsv1Client  appsv1Client.AppsV1Interface
+	oauthv1Client oauthClient.OauthV1Interface
 }
 
 func (r *Reconciler) Reconcile(in *v1alpha1.Installation, serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
