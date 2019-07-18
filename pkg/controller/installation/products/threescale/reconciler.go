@@ -142,6 +142,10 @@ func (r *Reconciler) reconcileOperator(serverClient pkgclient.Client) (v1alpha1.
 	}
 
 	ip, err := r.mpm.GetSubscriptionInstallPlan(packageName, r.namespace)
+	if err != nil && !k8serr.IsNotFound(err) {
+		return v1alpha1.PhaseFailed, err
+	}
+
 	if ip != nil && ip.Status.Phase == coreosv1alpha1.InstallPlanPhaseComplete {
 		return v1alpha1.PhaseCompleted, nil
 	}
