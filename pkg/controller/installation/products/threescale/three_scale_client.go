@@ -8,18 +8,31 @@ import (
 	"net/http"
 )
 
+//go:generate moq -out three_scale_moq.go . ThreeScaleInterface
+type ThreeScaleInterface interface {
+	SetNamespace(ns string)
+	AddSSOIntegration(data map[string]string, accessToken string) (*http.Response, error)
+	GetAdminUser(accessToken string) (*User, error)
+	GetUsers(accessToken string) (*Users, error)
+	AddUser(username string, email string, password string, accessToken string) (*http.Response, error)
+	UpdateAdminPortalUserDetails(username string, email string, accessToken string) (*http.Response, error)
+}
+
 type threeScaleClient struct {
 	httpc          *http.Client
 	wildCardDomain string
 	ns             string
 }
 
-func NewThreeScaleClient(httpc *http.Client, wildCardDomain string, ns string) *threeScaleClient {
+func NewThreeScaleClient(httpc *http.Client, wildCardDomain string) *threeScaleClient {
 	return &threeScaleClient{
 		httpc:          httpc,
 		wildCardDomain: wildCardDomain,
-		ns:             ns,
 	}
+}
+
+func (tsc *threeScaleClient) SetNamespace(ns string) {
+	tsc.ns = ns
 }
 
 func (tsc *threeScaleClient) AddSSOIntegration(data map[string]string, accessToken string) (*http.Response, error) {

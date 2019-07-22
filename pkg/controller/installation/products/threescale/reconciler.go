@@ -23,20 +23,24 @@ import (
 	pkgclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var (
+const (
 	defaultInstallationNamespace = "3scale"
 	packageName                  = "3scale"
 	apiManagerName               = "3scale"
 	clientId                     = "3scale"
 	oauthId                      = "3scale"
 	clientSecret                 = clientId + "-client-secret"
+	s3BucketSecretName           = "s3-bucket"
+	s3CredentialsSecretName      = "s3-credentials"
 )
 
-func NewReconciler(configManager config.ConfigReadWriter, i *v1alpha1.Installation, appsv1Client *appsv1Client.AppsV1Client, oauthv1Client *oauthClient.OauthV1Client, mpm marketplace.MarketplaceInterface) (*Reconciler, error) {
-	ns := i.Spec.NamespacePrefix + defaultInstallationNamespace
+var (
+	keycloakRealmPath = "/auth/realms/" + rhsso.KeycloakRealmName
+	sdConfig          = fmt.Sprintf("production:\n  enabled: true\n  server_scheme: 'https'\n  server_host: 'kubernetes.default.svc.cluster.local'\n  server_port: 443\n  authentication_method: oauth\n  oauth_server_type: builtin\n  client_id: '%s'\n  client_secret: '%s'\n  timeout: 1\n  open_timeout: 1\n  max_retry: 5\n", oauthId, clientSecret)
+)
 
-	httpc := &http.Client{}
-	tsClient := NewThreeScaleClient(httpc, i.Spec.RoutingSubdomain, ns)
+func NewReconciler(configManager config.ConfigReadWriter, i *v1alpha1.Installation, appsv1Client appsv1Client.AppsV1Interface, oauthv1Client oauthClient.OauthV1Interface, tsClient ThreeScaleInterface, mpm marketplace.MarketplaceInterface) (*Reconciler, error) {
+	ns := i.Spec.NamespacePrefix + defaultInstallationNamespace
 
 	return &Reconciler{
 		ConfigManager: configManager,
@@ -54,9 +58,9 @@ type Reconciler struct {
 	ConfigManager config.ConfigReadWriter
 	mpm           marketplace.MarketplaceInterface
 	installation  *v1alpha1.Installation
-	tsClient      *threeScaleClient
-	appsv1Client  *appsv1Client.AppsV1Client
-	oauthv1Client *oauthClient.OauthV1Client
+	tsClient      ThreeScaleInterface
+	appsv1Client  appsv1Client.AppsV1Interface
+	oauthv1Client oauthClient.OauthV1Interface
 }
 
 func (r *Reconciler) Reconcile(in *v1alpha1.Installation, serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
@@ -77,7 +81,7 @@ func (r *Reconciler) Reconcile(in *v1alpha1.Installation, serverClient pkgclient
 		return phase, err
 	}
 
-	logrus.Infof("%s has successfully deployed", packageName)
+	logrus.Infof("%s is successfully deployed", packageName)
 
 	phase, err = r.reconcileRHSSOIntegration(serverClient)
 	if err != nil || phase != v1alpha1.PhaseCompleted {
@@ -94,7 +98,7 @@ func (r *Reconciler) Reconcile(in *v1alpha1.Installation, serverClient pkgclient
 		return phase, err
 	}
 
-	logrus.Infof("%s has reconciled successfully", packageName)
+	logrus.Infof("%s installation is reconciled successfully", packageName)
 	return v1alpha1.PhaseCompleted, nil
 }
 
@@ -102,9 +106,6 @@ func (r *Reconciler) reconcileNamespace(serverClient pkgclient.Client) (v1alpha1
 	ns := &v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: r.namespace,
-			Labels: map[string]string{
-				"integreatly": "yes",
-			},
 		},
 	}
 	err := serverClient.Get(context.TODO(), pkgclient.ObjectKey{Name: r.namespace}, ns)
@@ -141,7 +142,11 @@ func (r *Reconciler) reconcileOperator(serverClient pkgclient.Client) (v1alpha1.
 		return v1alpha1.PhaseFailed, err
 	}
 
-	ip, err := r.mpm.GetSubscriptionInstallPlan(packageName, r.namespace)
+	ip, err := r.mpm.GetSubscriptionInstallPlan(serverClient, packageName, r.namespace)
+	if err != nil && !k8serr.IsNotFound(err) {
+		return v1alpha1.PhaseFailed, err
+	}
+
 	if ip != nil && ip.Status.Phase == coreosv1alpha1.InstallPlanPhaseComplete {
 		return v1alpha1.PhaseCompleted, nil
 	}
@@ -152,7 +157,7 @@ func (r *Reconciler) reconcileOperator(serverClient pkgclient.Client) (v1alpha1.
 func (r *Reconciler) reconcileComponents(serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
 	bucket := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "s3-bucket",
+			Name: s3BucketSecretName,
 		},
 	}
 
@@ -161,7 +166,7 @@ func (r *Reconciler) reconcileComponents(serverClient pkgclient.Client) (v1alpha
 		return v1alpha1.PhaseFailed, err
 	}
 
-	s3SecretName := "s3-credentials"
+	s3SecretName := s3CredentialsSecretName
 	tsS3 := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      s3SecretName,
@@ -194,9 +199,6 @@ func (r *Reconciler) reconcileComponents(serverClient pkgclient.Client) (v1alpha
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      apiManagerName,
 			Namespace: r.namespace,
-			Labels: map[string]string{
-				"integreatly": "yes",
-			},
 		},
 		Spec: threescalev1.APIManagerSpec{
 			APIManagerCommonSpec: threescalev1.APIManagerCommonSpec{
@@ -227,10 +229,10 @@ func (r *Reconciler) reconcileComponents(serverClient pkgclient.Client) (v1alpha
 		if err != nil {
 			return v1alpha1.PhaseFailed, err
 		}
-	} else {
-		if len(apim.Status.Deployments.Starting) == 0 && len(apim.Status.Deployments.Stopped) == 0 && len(apim.Status.Deployments.Ready) > 0 {
-			return v1alpha1.PhaseCompleted, nil
-		}
+	}
+
+	if len(apim.Status.Deployments.Starting) == 0 && len(apim.Status.Deployments.Stopped) == 0 && len(apim.Status.Deployments.Ready) > 0 {
+		return v1alpha1.PhaseCompleted, nil
 	}
 
 	return v1alpha1.PhaseInProgress, nil
@@ -239,7 +241,7 @@ func (r *Reconciler) reconcileComponents(serverClient pkgclient.Client) (v1alpha
 func (r *Reconciler) reconcileRHSSOIntegration(serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
 	kcr := &aerogearv1.KeycloakRealm{}
 	err := serverClient.Get(context.TODO(), pkgclient.ObjectKey{Name: rhsso.KeycloakRealmName, Namespace: r.installation.Spec.NamespacePrefix + rhsso.DefaultRhssoNamespace}, kcr)
-	if err != nil && !k8serr.IsNotFound(err) {
+	if err != nil {
 		return v1alpha1.PhaseFailed, err
 	}
 
@@ -387,7 +389,7 @@ func (r *Reconciler) reconcileRHSSOIntegration(serverClient pkgclient.Client) (v
 	if err != nil {
 		return v1alpha1.PhaseFailed, err
 	}
-	site := string(urlSecret.Data["SSO_ADMIN_URL"]) + "/auth/realms/" + rhsso.KeycloakRealmName
+	site := string(urlSecret.Data["SSO_ADMIN_URL"]) + keycloakRealmPath
 	res, err := r.tsClient.AddSSOIntegration(map[string]string{
 		"kind":                              "keycloak",
 		"name":                              "rhsso",
@@ -413,7 +415,7 @@ func (r *Reconciler) reconcileUpdatingAdminDetails(serverClient pkgclient.Client
 	}
 
 	kcUsers := filterUsers(kcr.Spec.Users, func(u *aerogearv1.KeycloakUser) bool {
-		return u.UserName == rhsso.CustomerAdminName
+		return u.UserName == rhsso.CustomerAdminUser.UserName
 	})
 	if len(kcUsers) == 1 {
 		accessToken, err := r.GetAdminToken(serverClient)
@@ -479,7 +481,6 @@ func (r *Reconciler) reconcileServiceDiscovery(serverClient pkgclient.Client) (v
 	if err != nil {
 		return v1alpha1.PhaseFailed, err
 	}
-	sdConfig := fmt.Sprintf("production:\n  enabled: true\n  server_scheme: 'https'\n  server_host: 'kubernetes.default.svc.cluster.local'\n  server_port: 443\n  authentication_method: oauth\n  oauth_server_type: builtin\n  client_id: '%s'\n  client_secret: '%s'\n  timeout: 1\n  open_timeout: 1\n  max_retry: 5\n", oauthId, clientSecret)
 	if system.Data["service_discovery.yml"] != sdConfig {
 		system.Data["service_discovery.yml"] = sdConfig
 		serverClient.Update(context.TODO(), system)

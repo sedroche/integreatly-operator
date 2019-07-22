@@ -29,7 +29,7 @@ var _ MarketplaceInterface = &MarketplaceInterfaceMock{}
 //             CreateSubscriptionFunc: func(os v1.OperatorSource, ns string, pkg string, channel string, operatorGroupNamespaces []string, approvalStrategy v1alpha1.Approval) error {
 // 	               panic("mock out the CreateSubscription method")
 //             },
-//             GetSubscriptionInstallPlanFunc: func(subName string, ns string) (*v1alpha1.InstallPlan, error) {
+//             GetSubscriptionInstallPlanFunc: func(serverClient client.Client, subName string, ns string) (*v1alpha1.InstallPlan, error) {
 // 	               panic("mock out the GetSubscriptionInstallPlan method")
 //             },
 //         }
@@ -43,7 +43,7 @@ type MarketplaceInterfaceMock struct {
 	CreateSubscriptionFunc func(os v1.OperatorSource, ns string, pkg string, channel string, operatorGroupNamespaces []string, approvalStrategy v1alpha1.Approval) error
 
 	// GetSubscriptionInstallPlanFunc mocks the GetSubscriptionInstallPlan method.
-	GetSubscriptionInstallPlanFunc func(subName string, ns string) (*v1alpha1.InstallPlan, error)
+	GetSubscriptionInstallPlanFunc func(serverClient client.Client, subName string, ns string) (*v1alpha1.InstallPlan, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -64,6 +64,8 @@ type MarketplaceInterfaceMock struct {
 		}
 		// GetSubscriptionInstallPlan holds details about calls to the GetSubscriptionInstallPlan method.
 		GetSubscriptionInstallPlan []struct {
+			// ServerClient is the serverClient argument value.
+			ServerClient client.Client
 			// SubName is the subName argument value.
 			SubName string
 			// Ns is the ns argument value.
@@ -124,33 +126,37 @@ func (mock *MarketplaceInterfaceMock) CreateSubscriptionCalls() []struct {
 }
 
 // GetSubscriptionInstallPlan calls GetSubscriptionInstallPlanFunc.
-func (mock *MarketplaceInterfaceMock) GetSubscriptionInstallPlan(subName string, ns string) (*v1alpha1.InstallPlan, error) {
+func (mock *MarketplaceInterfaceMock) GetSubscriptionInstallPlan(serverClient client.Client, subName string, ns string) (*v1alpha1.InstallPlan, error) {
 	if mock.GetSubscriptionInstallPlanFunc == nil {
 		panic("MarketplaceInterfaceMock.GetSubscriptionInstallPlanFunc: method is nil but MarketplaceInterface.GetSubscriptionInstallPlan was just called")
 	}
 	callInfo := struct {
-		SubName string
-		Ns      string
+		ServerClient client.Client
+		SubName      string
+		Ns           string
 	}{
-		SubName: subName,
-		Ns:      ns,
+		ServerClient: serverClient,
+		SubName:      subName,
+		Ns:           ns,
 	}
 	lockMarketplaceInterfaceMockGetSubscriptionInstallPlan.Lock()
 	mock.calls.GetSubscriptionInstallPlan = append(mock.calls.GetSubscriptionInstallPlan, callInfo)
 	lockMarketplaceInterfaceMockGetSubscriptionInstallPlan.Unlock()
-	return mock.GetSubscriptionInstallPlanFunc(subName, ns)
+	return mock.GetSubscriptionInstallPlanFunc(serverClient, subName, ns)
 }
 
 // GetSubscriptionInstallPlanCalls gets all the calls that were made to GetSubscriptionInstallPlan.
 // Check the length with:
 //     len(mockedMarketplaceInterface.GetSubscriptionInstallPlanCalls())
 func (mock *MarketplaceInterfaceMock) GetSubscriptionInstallPlanCalls() []struct {
-	SubName string
-	Ns      string
+	ServerClient client.Client
+	SubName      string
+	Ns           string
 } {
 	var calls []struct {
-		SubName string
-		Ns      string
+		ServerClient client.Client
+		SubName      string
+		Ns           string
 	}
 	lockMarketplaceInterfaceMockGetSubscriptionInstallPlan.RLock()
 	calls = mock.calls.GetSubscriptionInstallPlan

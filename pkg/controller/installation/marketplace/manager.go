@@ -11,7 +11,6 @@ import (
 	"github.com/sirupsen/logrus"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/rest"
 	pkgclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -43,19 +42,15 @@ func GetOperatorSources() *operatorSources {
 //go:generate moq -out MarketplaceManager_moq.go . MarketplaceInterface
 type MarketplaceInterface interface {
 	CreateSubscription(ctx context.Context, serverClient pkgclient.Client, os marketplacev1.OperatorSource, ns string, pkg string, channel string, operatorGroupNamespaces []string, approvalStrategy coreosv1alpha1.Approval) error
-	GetSubscriptionInstallPlan(ctx context.Context, subName, ns string) (*coreosv1alpha1.InstallPlan, *coreosv1alpha1.Subscription, error)
+	GetSubscriptionInstallPlan(ctx context.Context, serverClient pkgclient.Client, subName, ns string) (*coreosv1alpha1.InstallPlan, *coreosv1alpha1.Subscription, error)
 }
 
 type MarketplaceManager struct {
-	client     pkgclient.Client
-	restConfig *rest.Config
 	owner      ownerutil.Owner
 }
 
-func NewManager(client pkgclient.Client, rc *rest.Config, install *v1alpha1.Installation) *MarketplaceManager {
+func NewManager(install *v1alpha1.Installation) *MarketplaceManager {
 	return &MarketplaceManager{
-		client:     client,
-		restConfig: rc,
 		owner:      install,
 	}
 }
@@ -68,7 +63,8 @@ func (m *MarketplaceManager) CreateSubscription(ctx context.Context, serverClien
 			Name:      pkg,
 		},
 	}
-	err := m.client.Get(context.TODO(), pkgclient.ObjectKey{Name: sub.Name, Namespace: sub.Namespace}, sub)
+
+	err := serverClient.Get(context.TODO(), pkgclient.ObjectKey{Name: sub.Name, Namespace: sub.Namespace}, sub)
 	if err == nil {
 		logrus.Infof("Subscription already exists")
 		return k8serr.NewAlreadyExists(coreosv1alpha1.Resource("subscription"), sub.Name)
@@ -165,7 +161,7 @@ func (m *MarketplaceManager) getSubscription(ctx context.Context, subName, ns st
 	return sub, nil
 }
 
-func (m *MarketplaceManager) GetSubscriptionInstallPlan(ctx context.Context, subName, ns string) (*coreosv1alpha1.InstallPlan, *coreosv1alpha1.Subscription, error) {
+func (m *MarketplaceManager) GetSubscriptionInstallPlan(ctx context.Context, serverClient pkgclient.Client, subName, ns string) (*coreosv1alpha1.InstallPlan, *coreosv1alpha1.Subscription, error) {
 	sub, err := m.getSubscription(ctx, subName, ns)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "GetSubscriptionInstallPlan")

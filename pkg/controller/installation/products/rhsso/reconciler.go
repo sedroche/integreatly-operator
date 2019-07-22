@@ -21,12 +21,39 @@ import (
 
 var (
 	DefaultRhssoNamespace = "rhsso"
-	CustomerAdminName     = "customer-admin"
+	customerAdminPassword = "Password1"
 	keycloakName          = "rhsso"
 	KeycloakRealmName     = "openshift"
 	rhssoId               = "openshift-client"
 	clientSecret          = rhssoId + "-secret"
 )
+
+var CustomerAdminUser = &aerogearv1.KeycloakUser{
+	KeycloakApiUser: &aerogearv1.KeycloakApiUser{
+		Enabled:       true,
+		Attributes:    aerogearv1.KeycloakAttributes{},
+		UserName:      "customer-admin",
+		EmailVerified: true,
+		Email:         "customer-admin@example.com",
+		RealmRoles: []string{
+			"offline_access",
+			"uma_authorization",
+		},
+		ClientRoles: map[string][]string{
+			"account": {
+				"manage-account",
+				"view-profile",
+			},
+			"realm-management": {
+				"manage-users",
+				"manage-identity-providers",
+				"view-realm",
+			},
+		},
+	},
+	Password:     &customerAdminPassword,
+	OutputSecret: "customer-admin-user-credentials",
+}
 
 func NewReconciler(configManager config.ConfigReadWriter, instance *v1alpha1.Installation, mpm marketplace.MarketplaceInterface) (*Reconciler, error) {
 	config, err := configManager.ReadRHSSO()
@@ -61,7 +88,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, inst *v1alpha1.Installation,
 	case v1alpha1.PhaseCreatingSubscription:
 		return r.handleCreatingSubscription(ctx, serverClient)
 	case v1alpha1.PhaseAwaitingOperator:
-		return r.handleAwaitingOperator(ctx)
+		return r.handleAwaitingOperator(ctx, serverClient)
 	case v1alpha1.PhaseCreatingComponents:
 		return r.handleCreatingComponents(ctx, serverClient, inst)
 	case v1alpha1.PhaseInProgress:
@@ -126,8 +153,8 @@ func (r *Reconciler) handleCreatingSubscription(ctx context.Context, serverClien
 	return v1alpha1.PhaseAwaitingOperator, nil
 }
 
-func (r *Reconciler) handleAwaitingOperator(ctx context.Context) (v1alpha1.StatusPhase, error) {
-	ip, _, err := r.mpm.GetSubscriptionInstallPlan(ctx, "rhsso", r.Config.GetNamespace())
+func (r *Reconciler) handleAwaitingOperator(ctx context.Context, serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
+	ip, _, err := r.mpm.GetSubscriptionInstallPlan(ctx, serverClient, "rhsso", r.Config.GetNamespace())
 	if err != nil {
 		if k8serr.IsNotFound(err) {
 			logrus.Infof("No installplan created yet")
@@ -186,32 +213,7 @@ func (r *Reconciler) handleCreatingComponents(ctx context.Context, serverClient 
 					"metrics-listener",
 				},
 				Users: []*aerogearv1.KeycloakUser{
-					{
-						KeycloakApiUser: &aerogearv1.KeycloakApiUser{
-							Enabled:       true,
-							Attributes:    aerogearv1.KeycloakAttributes{},
-							UserName:      "customer-admin",
-							EmailVerified: true,
-							Email:         "customer-admin@example.com",
-							RealmRoles: []string{
-								"offline_access",
-								"uma_authorization",
-							},
-							ClientRoles: map[string][]string{
-								"account": {
-									"manage-account",
-									"view-profile",
-								},
-								"realm-management": {
-									"manage-users",
-									"manage-identity-providers",
-									"view-realm",
-								},
-							},
-						},
-						Password:     &password,
-						OutputSecret: "customer-admin-user-credentials",
-					},
+					CustomerAdminUser,
 				},
 				Clients: []*aerogearv1.KeycloakClient{
 					{

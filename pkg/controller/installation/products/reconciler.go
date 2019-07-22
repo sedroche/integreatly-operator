@@ -16,6 +16,7 @@ import (
 	oauthClient "github.com/openshift/client-go/oauth/clientset/versioned/typed/oauth/v1"
 	"github.com/integr8ly/integreatly-operator/pkg/controller/installation/products/amqonline"
 	"github.com/integr8ly/integreatly-operator/pkg/resources"
+        "net/http"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -25,7 +26,7 @@ type Interface interface {
 }
 
 func NewReconciler(ctx context.Context, product v1alpha1.ProductName, client client.Client, configManager config.ConfigReadWriter, instance *v1alpha1.Installation) (reconciler Interface, err error) {
-	mpm := marketplace.NewManager(client, instance)
+	mpm := marketplace.NewManager(instance)
 	nsr := resources.NewNamespaceReconciler(client)
 	switch product {
 	case v1alpha1.ProductAMQStreams:
@@ -48,7 +49,11 @@ func NewReconciler(ctx context.Context, product v1alpha1.ProductName, client cli
 		if err != nil {
 			return nil, err
 		}
-		reconciler, err = threescale.NewReconciler(configManager, instance, appsv1Client, oauthv1Client, mpm)
+
+		httpc := &http.Client{}
+		tsClient := threescale.NewThreeScaleClient(httpc, instance.Spec.RoutingSubdomain)
+
+		reconciler, err = threescale.NewReconciler(configManager, instance, appsv1Client, oauthv1Client, tsClient, mpm)
 	default:
 		err = errors.New("unknown products: " + string(product))
 		reconciler = &NoOp{}
