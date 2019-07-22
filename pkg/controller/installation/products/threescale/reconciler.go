@@ -9,11 +9,13 @@ import (
 	"github.com/integr8ly/integreatly-operator/pkg/controller/installation/marketplace"
 	"github.com/integr8ly/integreatly-operator/pkg/controller/installation/products/config"
 	"github.com/integr8ly/integreatly-operator/pkg/controller/installation/products/rhsso"
+	"github.com/integr8ly/integreatly-operator/pkg/resources"
 	appsv1 "github.com/openshift/api/apps/v1"
 	oauthv1 "github.com/openshift/api/oauth/v1"
 	appsv1Client "github.com/openshift/client-go/apps/clientset/versioned/typed/apps/v1"
 	oauthClient "github.com/openshift/client-go/oauth/clientset/versioned/typed/oauth/v1"
 	coreosv1alpha1 "github.com/operator-framework/operator-lifecycle-manager/pkg/api/apis/operators/v1alpha1"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"k8s.io/api/core/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -63,37 +65,37 @@ type Reconciler struct {
 	oauthv1Client oauthClient.OauthV1Interface
 }
 
-func (r *Reconciler) Reconcile(in *v1alpha1.Installation, serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
+func (r *Reconciler) Reconcile(ctx context.Context, in *v1alpha1.Installation, serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
 	logrus.Infof("Reconciling %s", packageName)
 
-	phase, err := r.reconcileNamespace(serverClient)
+	phase, err := r.reconcileNamespace(ctx, serverClient)
 	if err != nil || phase != v1alpha1.PhaseCompleted {
 		return phase, err
 	}
 
-	phase, err = r.reconcileOperator(serverClient)
+	phase, err = r.reconcileOperator(ctx, serverClient)
 	if err != nil || phase != v1alpha1.PhaseCompleted {
 		return phase, err
 	}
 
-	phase, err = r.reconcileComponents(serverClient)
+	phase, err = r.reconcileComponents(ctx, serverClient)
 	if err != nil || phase != v1alpha1.PhaseCompleted {
 		return phase, err
 	}
 
 	logrus.Infof("%s is successfully deployed", packageName)
 
-	phase, err = r.reconcileRHSSOIntegration(serverClient)
+	phase, err = r.reconcileRHSSOIntegration(ctx, serverClient)
 	if err != nil || phase != v1alpha1.PhaseCompleted {
 		return phase, err
 	}
 
-	phase, err = r.reconcileUpdatingAdminDetails(serverClient)
+	phase, err = r.reconcileUpdatingAdminDetails(ctx, serverClient)
 	if err != nil || phase != v1alpha1.PhaseCompleted {
 		return phase, err
 	}
 
-	phase, err = r.reconcileServiceDiscovery(serverClient)
+	phase, err = r.reconcileServiceDiscovery(ctx, serverClient)
 	if err != nil || phase != v1alpha1.PhaseCompleted {
 		return phase, err
 	}
@@ -102,24 +104,17 @@ func (r *Reconciler) Reconcile(in *v1alpha1.Installation, serverClient pkgclient
 	return v1alpha1.PhaseCompleted, nil
 }
 
-func (r *Reconciler) reconcileNamespace(serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
+func (r *Reconciler) reconcileNamespace(ctx context.Context, serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
+	nsr := resources.NewNamespaceReconciler(serverClient)
 	ns := &v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: r.namespace,
+			Namespace: r.namespace,
+			Name:      r.namespace,
 		},
 	}
-	err := serverClient.Get(context.TODO(), pkgclient.ObjectKey{Name: r.namespace}, ns)
-	if err != nil && !k8serr.IsNotFound(err) {
-		return v1alpha1.PhaseFailed, err
-	}
-
+	ns, err := nsr.Reconcile(ctx, ns, r.installation)
 	if err != nil {
-		logrus.Infof("Namespace %s not present", r.namespace)
-		err := serverClient.Create(context.TODO(), ns)
-		if err != nil {
-			return v1alpha1.PhaseFailed, err
-		}
-		logrus.Infof("%s namespace created", r.namespace)
+		return v1alpha1.PhaseFailed, errors.Wrapf(err, "%s namespace creation failed.", packageName)
 	}
 
 	if ns.Status.Phase == v1.NamespaceActive {
@@ -129,9 +124,11 @@ func (r *Reconciler) reconcileNamespace(serverClient pkgclient.Client) (v1alpha1
 	return v1alpha1.PhaseInProgress, nil
 }
 
-func (r *Reconciler) reconcileOperator(serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
+func (r *Reconciler) reconcileOperator(ctx context.Context, serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
 	err := r.mpm.CreateSubscription(
+		ctx,
 		serverClient,
+		r.installation,
 		marketplace.GetOperatorSources().Integreatly,
 		r.namespace,
 		packageName,
@@ -142,7 +139,7 @@ func (r *Reconciler) reconcileOperator(serverClient pkgclient.Client) (v1alpha1.
 		return v1alpha1.PhaseFailed, err
 	}
 
-	ip, err := r.mpm.GetSubscriptionInstallPlan(serverClient, packageName, r.namespace)
+	ip, _, err := r.mpm.GetSubscriptionInstallPlan(ctx, serverClient, packageName, r.namespace)
 	if err != nil && !k8serr.IsNotFound(err) {
 		return v1alpha1.PhaseFailed, err
 	}
@@ -154,14 +151,14 @@ func (r *Reconciler) reconcileOperator(serverClient pkgclient.Client) (v1alpha1.
 	return v1alpha1.PhaseInProgress, nil
 }
 
-func (r *Reconciler) reconcileComponents(serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
+func (r *Reconciler) reconcileComponents(ctx context.Context, serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
 	bucket := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: s3BucketSecretName,
 		},
 	}
 
-	err := serverClient.Get(context.TODO(), pkgclient.ObjectKey{Name: bucket.Name, Namespace: r.ConfigManager.GetOperatorNamespace()}, bucket)
+	err := serverClient.Get(ctx, pkgclient.ObjectKey{Name: bucket.Name, Namespace: r.ConfigManager.GetOperatorNamespace()}, bucket)
 	if err != nil {
 		return v1alpha1.PhaseFailed, err
 	}
@@ -173,7 +170,7 @@ func (r *Reconciler) reconcileComponents(serverClient pkgclient.Client) (v1alpha
 			Namespace: r.namespace,
 		},
 	}
-	err = serverClient.Get(context.TODO(), pkgclient.ObjectKey{Name: tsS3.Name, Namespace: tsS3.Namespace}, tsS3)
+	err = serverClient.Get(ctx, pkgclient.ObjectKey{Name: tsS3.Name, Namespace: tsS3.Namespace}, tsS3)
 	if err != nil && k8serr.IsNotFound(err) {
 		// We are copying the s3 details for now but this is not ideal as the secrets can get out of sync.
 		// We need to revise how this secret is set
@@ -182,13 +179,13 @@ func (r *Reconciler) reconcileComponents(serverClient pkgclient.Client) (v1alpha
 				Name: s3SecretName,
 			},
 		}
-		err = serverClient.Get(context.TODO(), pkgclient.ObjectKey{Name: s3.Name, Namespace: r.ConfigManager.GetOperatorNamespace()}, s3)
+		err = serverClient.Get(ctx, pkgclient.ObjectKey{Name: s3.Name, Namespace: r.ConfigManager.GetOperatorNamespace()}, s3)
 		if err != nil {
 			return v1alpha1.PhaseFailed, err
 		}
 
 		tsS3.Data = s3.Data
-		err = serverClient.Create(context.TODO(), tsS3)
+		err = serverClient.Create(ctx, tsS3)
 		if err != nil {
 			return v1alpha1.PhaseFailed, err
 		}
@@ -218,14 +215,14 @@ func (r *Reconciler) reconcileComponents(serverClient pkgclient.Client) (v1alpha
 			},
 		},
 	}
-	err = serverClient.Get(context.TODO(), pkgclient.ObjectKey{Name: apim.Name, Namespace: r.namespace}, apim)
+	err = serverClient.Get(ctx, pkgclient.ObjectKey{Name: apim.Name, Namespace: r.namespace}, apim)
 	if err != nil && !k8serr.IsNotFound(err) {
 		return v1alpha1.PhaseFailed, err
 	}
 
 	if err != nil {
 		logrus.Infof("Creating API Manager")
-		err := serverClient.Create(context.TODO(), apim)
+		err := serverClient.Create(ctx, apim)
 		if err != nil {
 			return v1alpha1.PhaseFailed, err
 		}
@@ -238,9 +235,9 @@ func (r *Reconciler) reconcileComponents(serverClient pkgclient.Client) (v1alpha
 	return v1alpha1.PhaseInProgress, nil
 }
 
-func (r *Reconciler) reconcileRHSSOIntegration(serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
+func (r *Reconciler) reconcileRHSSOIntegration(ctx context.Context, serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
 	kcr := &aerogearv1.KeycloakRealm{}
-	err := serverClient.Get(context.TODO(), pkgclient.ObjectKey{Name: rhsso.KeycloakRealmName, Namespace: r.installation.Spec.NamespacePrefix + rhsso.DefaultRhssoNamespace}, kcr)
+	err := serverClient.Get(ctx, pkgclient.ObjectKey{Name: rhsso.KeycloakRealmName, Namespace: r.installation.Spec.NamespacePrefix + rhsso.DefaultRhssoNamespace}, kcr)
 	if err != nil {
 		return v1alpha1.PhaseFailed, err
 	}
@@ -369,7 +366,7 @@ func (r *Reconciler) reconcileRHSSOIntegration(serverClient pkgclient.Client) (v
 			OutputSecret: clientId + "-secret",
 		})
 
-		err = serverClient.Update(context.TODO(), kcr)
+		err = serverClient.Update(ctx, kcr)
 		if err != nil {
 			return v1alpha1.PhaseFailed, err
 		}
@@ -380,12 +377,12 @@ func (r *Reconciler) reconcileRHSSOIntegration(serverClient pkgclient.Client) (v
 			Name: "credential-rhsso",
 		},
 	}
-	err = serverClient.Get(context.TODO(), pkgclient.ObjectKey{Name: urlSecret.Name, Namespace: r.installation.Spec.NamespacePrefix + rhsso.DefaultRhssoNamespace}, urlSecret)
+	err = serverClient.Get(ctx, pkgclient.ObjectKey{Name: urlSecret.Name, Namespace: r.installation.Spec.NamespacePrefix + rhsso.DefaultRhssoNamespace}, urlSecret)
 	if err != nil {
 		return v1alpha1.PhaseFailed, err
 	}
 
-	accessToken, err := r.GetAdminToken(serverClient)
+	accessToken, err := r.GetAdminToken(ctx, serverClient)
 	if err != nil {
 		return v1alpha1.PhaseFailed, err
 	}
@@ -407,9 +404,9 @@ func (r *Reconciler) reconcileRHSSOIntegration(serverClient pkgclient.Client) (v
 	return v1alpha1.PhaseCompleted, nil
 }
 
-func (r *Reconciler) reconcileUpdatingAdminDetails(serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
+func (r *Reconciler) reconcileUpdatingAdminDetails(ctx context.Context, serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
 	kcr := &aerogearv1.KeycloakRealm{}
-	err := serverClient.Get(context.TODO(), pkgclient.ObjectKey{Name: rhsso.KeycloakRealmName, Namespace: r.installation.Spec.NamespacePrefix + rhsso.DefaultRhssoNamespace}, kcr)
+	err := serverClient.Get(ctx, pkgclient.ObjectKey{Name: rhsso.KeycloakRealmName, Namespace: r.installation.Spec.NamespacePrefix + rhsso.DefaultRhssoNamespace}, kcr)
 	if err != nil && !k8serr.IsNotFound(err) {
 		return v1alpha1.PhaseFailed, err
 	}
@@ -418,7 +415,7 @@ func (r *Reconciler) reconcileUpdatingAdminDetails(serverClient pkgclient.Client
 		return u.UserName == rhsso.CustomerAdminUser.UserName
 	})
 	if len(kcUsers) == 1 {
-		accessToken, err := r.GetAdminToken(serverClient)
+		accessToken, err := r.GetAdminToken(ctx, serverClient)
 		if err != nil {
 			return v1alpha1.PhaseFailed, err
 		}
@@ -435,9 +432,9 @@ func (r *Reconciler) reconcileUpdatingAdminDetails(serverClient pkgclient.Client
 			}
 		}
 
-		currentUsername, currentEmail, err := r.GetAdminNameAndPassFromSecret(serverClient)
+		currentUsername, currentEmail, err := r.GetAdminNameAndPassFromSecret(ctx, serverClient)
 		if *currentUsername != kcCaUser.UserName || *currentEmail != kcCaUser.Email {
-			err = r.SetAdminDetailsOnSecret(serverClient, kcCaUser.UserName, kcCaUser.Email)
+			err = r.SetAdminDetailsOnSecret(ctx, serverClient, kcCaUser.UserName, kcCaUser.Email)
 			if err != nil {
 				return v1alpha1.PhaseFailed, err
 			}
@@ -452,7 +449,7 @@ func (r *Reconciler) reconcileUpdatingAdminDetails(serverClient pkgclient.Client
 	return v1alpha1.PhaseCompleted, nil
 }
 
-func (r *Reconciler) reconcileServiceDiscovery(serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
+func (r *Reconciler) reconcileServiceDiscovery(ctx context.Context, serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
 	_, err := r.oauthv1Client.OAuthClients().Get(oauthId, metav1.GetOptions{})
 	if err != nil && k8serr.IsNotFound(err) {
 		tsOauth := &oauthv1.OAuthClient{
@@ -477,13 +474,13 @@ func (r *Reconciler) reconcileServiceDiscovery(serverClient pkgclient.Client) (v
 			Namespace: r.namespace,
 		},
 	}
-	err = serverClient.Get(context.TODO(), pkgclient.ObjectKey{Name: system.Name, Namespace: system.Namespace}, system)
+	err = serverClient.Get(ctx, pkgclient.ObjectKey{Name: system.Name, Namespace: system.Namespace}, system)
 	if err != nil {
 		return v1alpha1.PhaseFailed, err
 	}
 	if system.Data["service_discovery.yml"] != sdConfig {
 		system.Data["service_discovery.yml"] = sdConfig
-		serverClient.Update(context.TODO(), system)
+		serverClient.Update(ctx, system)
 		if err != nil {
 			return v1alpha1.PhaseFailed, err
 		}
@@ -502,14 +499,14 @@ func (r *Reconciler) reconcileServiceDiscovery(serverClient pkgclient.Client) (v
 	return v1alpha1.PhaseCompleted, nil
 }
 
-func (r *Reconciler) GetAdminNameAndPassFromSecret(serverClient pkgclient.Client) (*string, *string, error) {
+func (r *Reconciler) GetAdminNameAndPassFromSecret(ctx context.Context, serverClient pkgclient.Client) (*string, *string, error) {
 	s := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: r.namespace,
 			Name:      "system-seed",
 		},
 	}
-	err := serverClient.Get(context.TODO(), pkgclient.ObjectKey{Name: s.Name, Namespace: r.namespace}, s)
+	err := serverClient.Get(ctx, pkgclient.ObjectKey{Name: s.Name, Namespace: r.namespace}, s)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -519,14 +516,14 @@ func (r *Reconciler) GetAdminNameAndPassFromSecret(serverClient pkgclient.Client
 	return &username, &email, nil
 }
 
-func (r *Reconciler) SetAdminDetailsOnSecret(serverClient pkgclient.Client, username string, email string) error {
+func (r *Reconciler) SetAdminDetailsOnSecret(ctx context.Context, serverClient pkgclient.Client, username string, email string) error {
 	s := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: r.namespace,
 			Name:      "system-seed",
 		},
 	}
-	err := serverClient.Get(context.TODO(), pkgclient.ObjectKey{Name: s.Name, Namespace: r.namespace}, s)
+	err := serverClient.Get(ctx, pkgclient.ObjectKey{Name: s.Name, Namespace: r.namespace}, s)
 	if err != nil {
 		return err
 	}
@@ -539,7 +536,7 @@ func (r *Reconciler) SetAdminDetailsOnSecret(serverClient pkgclient.Client, user
 
 	s.Data["ADMIN_USER"] = []byte(username)
 	s.Data["ADMIN_EMAIL"] = []byte(email)
-	err = serverClient.Update(context.TODO(), s)
+	err = serverClient.Update(ctx, s)
 	if err != nil {
 		return err
 	}
@@ -547,13 +544,13 @@ func (r *Reconciler) SetAdminDetailsOnSecret(serverClient pkgclient.Client, user
 	return nil
 }
 
-func (r *Reconciler) GetAdminToken(serverClient pkgclient.Client) (*string, error) {
+func (r *Reconciler) GetAdminToken(ctx context.Context, serverClient pkgclient.Client) (*string, error) {
 	s := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "system-seed",
 		},
 	}
-	err := serverClient.Get(context.TODO(), pkgclient.ObjectKey{Name: s.Name, Namespace: r.namespace}, s)
+	err := serverClient.Get(ctx, pkgclient.ObjectKey{Name: s.Name, Namespace: r.namespace}, s)
 	if err != nil {
 		return nil, err
 	}

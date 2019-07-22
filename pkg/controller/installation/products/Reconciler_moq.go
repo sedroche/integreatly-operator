@@ -24,11 +24,7 @@ var _ Interface = &InterfaceMock{}
 //
 //         // make and configure a mocked Interface
 //         mockedInterface := &InterfaceMock{
-<<<<<<< HEAD
 //             ReconcileFunc: func(ctx context.Context, inst *v1alpha1.Installation, serverClient client.Client) (v1alpha1.StatusPhase, error) {
-=======
-//             ReconcileFunc: func(inst *v1alpha1.Installation, serverClient client.Client) (v1alpha1.StatusPhase, error) {
->>>>>>> 3scale installation
 // 	               panic("mock out the Reconcile method")
 //             },
 //         }
@@ -39,11 +35,7 @@ var _ Interface = &InterfaceMock{}
 //     }
 type InterfaceMock struct {
 	// ReconcileFunc mocks the Reconcile method.
-<<<<<<< HEAD
 	ReconcileFunc func(ctx context.Context, inst *v1alpha1.Installation, serverClient client.Client) (v1alpha1.StatusPhase, error)
-=======
-	ReconcileFunc func(inst *v1alpha1.Installation, serverClient client.Client) (v1alpha1.StatusPhase, error)
->>>>>>> 3scale installation
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -65,46 +57,30 @@ func (mock *InterfaceMock) Reconcile(ctx context.Context, inst *v1alpha1.Install
 		panic("InterfaceMock.ReconcileFunc: method is nil but Interface.Reconcile was just called")
 	}
 	callInfo := struct {
-<<<<<<< HEAD
 		Ctx          context.Context
 		Inst         *v1alpha1.Installation
 		ServerClient client.Client
 	}{
 		Ctx:          ctx,
-=======
-		Inst         *v1alpha1.Installation
-		ServerClient client.Client
-	}{
->>>>>>> 3scale installation
 		Inst:         inst,
 		ServerClient: serverClient,
 	}
 	lockInterfaceMockReconcile.Lock()
 	mock.calls.Reconcile = append(mock.calls.Reconcile, callInfo)
 	lockInterfaceMockReconcile.Unlock()
-<<<<<<< HEAD
 	return mock.ReconcileFunc(ctx, inst, serverClient)
-=======
-	return mock.ReconcileFunc(inst, serverClient)
->>>>>>> 3scale installation
 }
 
 // ReconcileCalls gets all the calls that were made to Reconcile.
 // Check the length with:
 //     len(mockedInterface.ReconcileCalls())
 func (mock *InterfaceMock) ReconcileCalls() []struct {
-<<<<<<< HEAD
 	Ctx          context.Context
-=======
->>>>>>> 3scale installation
 	Inst         *v1alpha1.Installation
 	ServerClient client.Client
 } {
 	var calls []struct {
-<<<<<<< HEAD
 		Ctx          context.Context
-=======
->>>>>>> 3scale installation
 		Inst         *v1alpha1.Installation
 		ServerClient client.Client
 	}

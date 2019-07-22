@@ -27,7 +27,7 @@ var (
 	ProductRHSSO               ProductName = "rhsso"
 	ProductCodeReadyWorkspaces ProductName = "codeready-workspaces"
 	ProductFuse                ProductName = "fuse"
-        Product3Scale              ProductName = "3scale"
+	Product3Scale              ProductName = "3scale"
 )
 
 // InstallationSpec defines the desired state of Installation

@@ -56,8 +56,9 @@ func TestThreeScale(t *testing.T) {
 				RoutingSubdomain: "apps.example.com",
 			},
 		}
+		ctx := context.TODO()
 		testReconciler, err := NewReconciler(configManager, installation, fakeAppsV1Client, fakeOauthClient, fakeThreeScaleClient, mpm)
-		status, err := testReconciler.Reconcile(installation, fakeSigsClient)
+		status, err := testReconciler.Reconcile(ctx, installation, fakeSigsClient)
 		if err != nil {
 			t.Fatalf("Error reconciling %s: %v", packageName, err)
 		}
@@ -68,28 +69,28 @@ func TestThreeScale(t *testing.T) {
 
 		// A namespace should have been created.
 		ns := &corev1.Namespace{}
-		err = fakeSigsClient.Get(context.TODO(), pkgclient.ObjectKey{Name: defaultInstallationNamespace}, ns)
+		err = fakeSigsClient.Get(ctx, pkgclient.ObjectKey{Name: defaultInstallationNamespace}, ns)
 		if k8serr.IsNotFound(err) {
 			t.Fatalf("%s namespace was not created", packageName)
 		}
 
 		// A subscription to the product operator should have been created.
 		sub := &coreosv1alpha1.Subscription{}
-		err = fakeSigsClient.Get(context.TODO(), pkgclient.ObjectKey{Name: packageName, Namespace: defaultInstallationNamespace}, sub)
+		err = fakeSigsClient.Get(ctx, pkgclient.ObjectKey{Name: packageName, Namespace: defaultInstallationNamespace}, sub)
 		if k8serr.IsNotFound(err) {
 			t.Fatalf("%s operator subscription was not created", packageName)
 		}
 
 		// The main s3credentials should have been copied into the 3scale namespace.
 		s3Credentials := &corev1.Secret{}
-		err = fakeSigsClient.Get(context.TODO(), pkgclient.ObjectKey{Name: s3CredentialsSecretName, Namespace: defaultInstallationNamespace}, s3Credentials)
+		err = fakeSigsClient.Get(ctx, pkgclient.ObjectKey{Name: s3CredentialsSecretName, Namespace: defaultInstallationNamespace}, s3Credentials)
 		if k8serr.IsNotFound(err) {
 			t.Fatalf("s3Credentials were not copied into %s namespace", defaultInstallationNamespace)
 		}
 
 		// The product custom resource should have been created.
 		apim := &threescalev1.APIManager{}
-		err = fakeSigsClient.Get(context.TODO(), pkgclient.ObjectKey{Name: apiManagerName, Namespace: defaultInstallationNamespace}, apim)
+		err = fakeSigsClient.Get(ctx, pkgclient.ObjectKey{Name: apiManagerName, Namespace: defaultInstallationNamespace}, apim)
 		if k8serr.IsNotFound(err) {
 			t.Fatalf("APIManager '%s' was not created", apiManagerName)
 		}
@@ -99,7 +100,7 @@ func TestThreeScale(t *testing.T) {
 
 		// RHSSO integration should be configured.
 		kcr := &aerogearv1.KeycloakRealm{}
-		err = fakeSigsClient.Get(context.TODO(), pkgclient.ObjectKey{Name: rhsso.KeycloakRealmName, Namespace: rhsso.DefaultRhssoNamespace}, kcr)
+		err = fakeSigsClient.Get(ctx, pkgclient.ObjectKey{Name: rhsso.KeycloakRealmName, Namespace: rhsso.DefaultRhssoNamespace}, kcr)
 		if !containsClient(kcr.Spec.Clients, clientId) {
 			t.Fatalf("Keycloak client '%s' was not created", clientId)
 		}
@@ -114,7 +115,7 @@ func TestThreeScale(t *testing.T) {
 			t.Fatalf("Request to 3scale API to update admin details was incorrect")
 		}
 		adminSecret := &corev1.Secret{}
-		err = fakeSigsClient.Get(context.TODO(), pkgclient.ObjectKey{Name: threeScaleAdminDetailsSecret.Name, Namespace: defaultInstallationNamespace}, adminSecret)
+		err = fakeSigsClient.Get(ctx, pkgclient.ObjectKey{Name: threeScaleAdminDetailsSecret.Name, Namespace: defaultInstallationNamespace}, adminSecret)
 		if string(adminSecret.Data["ADMIN_USER"]) != rhsso.CustomerAdminUser.UserName || string(adminSecret.Data["ADMIN_EMAIL"]) != rhsso.CustomerAdminUser.Email {
 			t.Fatalf("3scale admin secret details were not updated")
 		}
@@ -128,7 +129,7 @@ func TestThreeScale(t *testing.T) {
 			t.Fatalf("3scale Ouath Client redirect uri should be %s and is %s", installation.Spec.MasterURL, threeScaleOauth.RedirectURIs[0])
 		}
 		serviceDiscoveryConfigMap := &corev1.ConfigMap{}
-		err = fakeSigsClient.Get(context.TODO(), pkgclient.ObjectKey{Name: threeScaleServiceDiscoveryConfigMap.Name, Namespace: defaultInstallationNamespace}, serviceDiscoveryConfigMap)
+		err = fakeSigsClient.Get(ctx, pkgclient.ObjectKey{Name: threeScaleServiceDiscoveryConfigMap.Name, Namespace: defaultInstallationNamespace}, serviceDiscoveryConfigMap)
 		if string(adminSecret.Data["ADMIN_USER"]) != rhsso.CustomerAdminUser.UserName || string(adminSecret.Data["ADMIN_EMAIL"]) != rhsso.CustomerAdminUser.Email {
 			t.Fatalf("3scale admin secret details were not updated")
 		}

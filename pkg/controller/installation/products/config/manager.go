@@ -38,7 +38,7 @@ type ConfigReadWriter interface {
 	ReadCodeReady() (*CodeReady, error)
 	ReadFuse() (*Fuse, error)
 	ReadAMQOnline() (*AMQOnline, error)
-        GetOperatorNamespace() string
+	GetOperatorNamespace() string
 }
 
 //go:generate moq -out ConfigReadable_moq.go . ConfigReadable

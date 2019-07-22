@@ -64,7 +64,7 @@ func getSigClient(preReqObjects []runtime.Object, scheme *runtime.Scheme) *SigsC
 	return sigsFakeClient
 }
 func getConfigManager(client client.Client) (*config.Manager, error) {
-	configManager, err := config.NewManager(client, configManagerConfigMap.Namespace, configManagerConfigMap.Name)
+	configManager, err := config.NewManager(context.TODO(), client, configManagerConfigMap.Namespace, configManagerConfigMap.Name)
 	if err != nil {
 		return nil, err
 	}

@@ -86,7 +86,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, inst *v1alpha1.Installation,
 	case v1alpha1.PhaseAwaitingNS:
 		return r.handleAwaitingNSPhase(ctx, serverClient)
 	case v1alpha1.PhaseCreatingSubscription:
-		return r.handleCreatingSubscription(ctx, serverClient)
+		return r.handleCreatingSubscription(ctx, serverClient, inst)
 	case v1alpha1.PhaseAwaitingOperator:
 		return r.handleAwaitingOperator(ctx, serverClient)
 	case v1alpha1.PhaseCreatingComponents:
@@ -136,10 +136,11 @@ func (r *Reconciler) handleAwaitingNSPhase(ctx context.Context, serverClient pkg
 	return v1alpha1.PhaseAwaitingNS, nil
 }
 
-func (r *Reconciler) handleCreatingSubscription(ctx context.Context, serverClient pkgclient.Client) (v1alpha1.StatusPhase, error) {
+func (r *Reconciler) handleCreatingSubscription(ctx context.Context, serverClient pkgclient.Client, inst *v1alpha1.Installation) (v1alpha1.StatusPhase, error) {
 	err := r.mpm.CreateSubscription(
 		ctx,
-                serverClient,
+		serverClient,
+		inst,
 		marketplace.GetOperatorSources().Integreatly,
 		r.Config.GetNamespace(),
 		"rhsso",
@@ -191,7 +192,7 @@ func (r *Reconciler) handleCreatingComponents(ctx context.Context, serverClient 
 		},
 	}
 
-	err := serverClient.Create(context.TODO(), kc)
+	err := serverClient.Create(ctx, kc)
 	if err != nil {
 		return v1alpha1.PhaseFailed, err
 	}

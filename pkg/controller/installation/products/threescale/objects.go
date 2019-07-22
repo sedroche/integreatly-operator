@@ -78,7 +78,7 @@ var threeScaleServiceDiscoveryConfigMap = &corev1.ConfigMap{
 		Name: "system",
 	},
 	Data: map[string]string{
-			"service_discovery.yml": "",
+		"service_discovery.yml": "",
 	},
 }
 

@@ -212,7 +212,7 @@ func (r *ReconcileInstallation) processStage(instance *v1alpha1.Installation, pr
 		if !(phase == string(v1alpha1.PhaseCompleted)) {
 			incompleteStage = true
 		}
-		reconciler, err := products.NewReconciler(r.context, v1alpha1.ProductName(product), r.client, r.restConfig, configManager, instance)
+		reconciler, err := products.NewReconciler(v1alpha1.ProductName(product), r.client, r.restConfig, configManager, instance)
 		if err != nil {
 			return v1alpha1.PhaseFailed, pkgerr.Wrapf(err, "failed installation of %s", product)
 		}
