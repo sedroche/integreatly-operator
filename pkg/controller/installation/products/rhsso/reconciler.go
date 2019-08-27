@@ -99,22 +99,30 @@ func (r *Reconciler) Reconcile(ctx context.Context, inst *v1alpha1.Installation,
 	logrus.Info("Reconciling rhsso")
 	ns := r.Config.GetNamespace()
 
-	// Add finalizer if not there
-	err := resources.AddFinalizer(ctx, inst, serverClient, finalizer)
+
+	err := r.ReconcileFinalizer(ctx, serverClient, inst, finalizer, func() error {
+		return resources.RemoveOauthClient(ctx, inst, serverClient, r.oauthv1Client, finalizer, oauthId)
+	})
 	if err != nil {
-		logrus.Error("Error adding rhsso finalizer to installation", err)
-		return v1alpha1.PhaseFailed, nil
+		return v1alpha1.PhaseFailed, err
 	}
 
-	// Run finalization logic. If it fails, don't remove the finalizer
-	// so that we can retry during the next reconciliation
-	if inst.GetDeletionTimestamp() != nil {
-		err := resources.RemoveOauthClient(ctx, inst, serverClient, r.oauthv1Client, finalizer, oauthId)
-		if err != nil && !k8serr.IsNotFound(err) {
-			logrus.Error("Error removing rhsso oauth client", err)
-			return v1alpha1.PhaseFailed, nil
-		}
-	}
+	//// Add finalizer if not there
+	//err := resources.AddFinalizer(ctx, inst, serverClient, finalizer)
+	//if err != nil {
+	//	logrus.Error("Error adding rhsso finalizer to installation", err)
+	//	return v1alpha1.PhaseFailed, nil
+	//}
+	//
+	//// Run finalization logic. If it fails, don't remove the finalizer
+	//// so that we can retry during the next reconciliation
+	//if inst.GetDeletionTimestamp() != nil {
+	//	err := resources.RemoveOauthClient(ctx, inst, serverClient, r.oauthv1Client, finalizer, oauthId)
+	//	if err != nil && !k8serr.IsNotFound(err) {
+	//		logrus.Error("Error removing rhsso oauth client", err)
+	//		return v1alpha1.PhaseFailed, nil
+	//	}
+	//}
 
 	phase, err := r.ReconcileNamespace(ctx, ns, inst, serverClient)
 	if err != nil || phase != v1alpha1.PhaseCompleted {

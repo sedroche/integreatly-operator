@@ -3,6 +3,7 @@ package resources
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/integr8ly/integreatly-operator/pkg/apis/integreatly/v1alpha1"
 	"github.com/integr8ly/integreatly-operator/pkg/controller/installation/marketplace"
@@ -14,6 +15,7 @@ import (
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	pkgclient "sigs.k8s.io/controller-runtime/pkg/client"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // This is the base reconciler that all the other reconcilers extend. It handles things like namespace creation, subscription creation etc
@@ -88,6 +90,44 @@ func (r *Reconciler) ReconcileNamespace(ctx context.Context, namespace string, i
 		return v1alpha1.PhaseInProgress, nil
 	}
 	return v1alpha1.PhaseCompleted, nil
+}
+
+type finalizerFunc func() error
+func (r *Reconciler) ReconcileFinalizer(ctx context.Context, client pkgclient.Client, obj runtime.Object, finalizer string, finalFunc finalizerFunc) error {
+	// get the existing object meta
+	metaObj, ok := obj.(metav1.Object)
+	if !ok {
+		return fmt.Errorf("%T does not implement metav1.Object interface", obj)
+	}
+
+	// Add finalizer if not there
+	err := AddFinalizer(ctx, obj, client, finalizer)
+	if err != nil {
+		logrus.Error("Error adding rhsso finalizer to installation", err)
+		return nil
+	}
+
+	// Run finalization logic. If it fails, don't remove the finalizer
+	// so that we can retry during the next reconciliation
+	if metaObj.GetDeletionTimestamp() != nil {
+		if contains(metaObj.GetFinalizers(), finalizer) {
+
+			err := finalFunc()
+			if err != nil {
+				logrus.Error("Error cleaning up oauth client", err)
+				return err
+			}
+
+			// Remove the finalizer to allow for deletion of the installation cr
+			logrus.Infof("Removing finalizer: %s", finalizer)
+			err = RemoveFinalizer(ctx, metaObj, client, finalizer)
+			if err != nil {
+				return err
+			}
+		}
+
+	}
+	return nil
 }
 
 func (r *Reconciler) ReconcileSubscription(ctx context.Context, inst *v1alpha1.Installation, t marketplace.Target, client pkgclient.Client) (v1alpha1.StatusPhase, error) {

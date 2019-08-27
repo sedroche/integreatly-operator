@@ -2,6 +2,8 @@ package resources
 
 import (
 	"context"
+	"fmt"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/integr8ly/integreatly-operator/pkg/apis/integreatly/v1alpha1"
 	oauthClient "github.com/openshift/client-go/oauth/clientset/versioned/typed/oauth/v1"
@@ -12,10 +14,16 @@ import (
 
 // AddFinalizer adds a finalizer to the custom resource. This allows us to clean up oauth clients
 // and other cluster level objects owned by the installation before the cr is deleted
-func AddFinalizer(ctx context.Context, inst *v1alpha1.Installation, client pkgclient.Client, finalizer string) error {
-	if !contains(inst.GetFinalizers(), finalizer) && inst.GetDeletionTimestamp() == nil {
-		inst.SetFinalizers(append(inst.GetFinalizers(), finalizer))
-		err := client.Update(ctx, inst)
+func AddFinalizer(ctx context.Context, obj runtime.Object, client pkgclient.Client, finalizer string) error {
+	// get the existing object meta
+	metaObj, ok := obj.(metav1.Object)
+	if !ok {
+		return fmt.Errorf("%T does not implement metav1.Object interface", obj)
+	}
+
+	if !contains(metaObj.GetFinalizers(), finalizer) && metaObj.GetDeletionTimestamp() == nil {
+		metaObj.SetFinalizers(append(metaObj.GetFinalizers(), finalizer))
+		err := client.Update(ctx, obj)
 		if err != nil {
 			logrus.Error("Error adding finalizer to custom resource", err)
 			return err
